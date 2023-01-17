@@ -1,0 +1,108 @@
+extern crate core;
+
+use anchor_lang::prelude::*;
+
+declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS");
+
+#[program]
+pub mod vault {
+    use std::borrow::{Borrow, BorrowMut};
+    use super::*;
+
+    pub fn initialize(ctx: Context<Initialize>, apy_basis_points: u64) -> Result<()> {
+        let vault = &mut ctx.accounts.vault;
+        vault.owner = *ctx.accounts.owner.key;
+        vault.apy_basis_points = apy_basis_points;
+        Ok(())
+    }
+
+    pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
+        let from = ctx.accounts.owner.to_account_info();
+        let to = ctx.accounts.vault.to_account_info();
+        let instruction = anchor_lang::solana_program::system_instruction::transfer(
+            from.key,
+            to.key,
+            amount,
+        );
+        let result = anchor_lang::solana_program::program::invoke(
+            &instruction,
+            &[from, to],
+        );
+        if result.is_ok() {
+            let deposit_entry = &mut ctx.accounts.deposit_entry;
+            deposit_entry.timestamp_start = Clock::get().unwrap().unix_timestamp as i64;
+            deposit_entry.amount = amount;
+            deposit_entry.owner = *ctx.accounts.owner.key;
+        }
+        Ok(())
+    }
+
+    pub fn withdraw(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
+        let deposit_entry = &mut ctx.accounts.deposit_entry;
+        let vault = &mut ctx.accounts.vault;
+        let receiver = &mut ctx.accounts.owner;
+        require!(amount < deposit_entry.amount, anchor_lang::error::ErrorCode::AccountDidNotDeserialize);
+
+        let vault_account_info = vault.to_account_info();
+        let mut vault_balance = vault_account_info.try_borrow_mut_lamports()?;
+
+        let will_remain_rent_exempt = Rent::get().unwrap().is_exempt(
+            **vault_balance - amount,
+            vault_account_info.data_len());
+        require!(will_remain_rent_exempt, anchor_lang::error::ErrorCode::AccountDidNotDeserialize);
+
+        let receiver_account_info = receiver.to_account_info();
+        let mut receiver_balance = receiver_account_info.try_borrow_mut_lamports()?;
+
+        **vault_balance -= amount;
+        **receiver_balance += amount;
+
+        deposit_entry.amount -= amount;
+        return Ok(());
+    }
+}
+
+
+#[derive(Accounts)]
+pub struct Initialize<'info> {
+    #[account(init, payer = owner, space = 256)]
+    pub vault: Account<'info, Vault>,
+    #[account(mut)]
+    pub owner: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct Deposit<'info> {
+    #[account(init, payer = owner, space = 256)]
+    pub deposit_entry: Account<'info, DepositEntry>,
+    #[account(mut)]
+    pub vault: Account<'info, Vault>,
+    #[account(mut)]
+    pub owner: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct Withdraw<'info> {
+    #[account(mut)]
+    pub deposit_entry: Account<'info, DepositEntry>,
+    #[account(mut)]
+    pub vault: Account<'info, Vault>,
+    #[account(mut)]
+    pub owner: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[account]
+pub struct Vault {
+    pub owner: Pubkey,
+    pub apy_basis_points: u64,
+}
+
+#[account]
+pub struct DepositEntry {
+    pub amount: u64,
+    pub owner: Pubkey,
+    pub timestamp_start: i64,
+}
