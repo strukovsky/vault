@@ -1,4 +1,3 @@
-extern crate core;
 
 use anchor_lang::prelude::*;
 
@@ -60,6 +59,31 @@ pub mod vault {
         deposit_entry.amount -= amount;
         return Ok(());
     }
+
+    pub fn supply(ctx: Context<Supply>, amount: u64) -> Result<()> {
+        let vault = ctx.accounts.vault.to_account_info();
+        let signer = ctx.accounts.signer.to_account_info();
+        let signer_key = *signer.key;
+        require!(signer_key == ctx.accounts.vault.owner, anchor_lang::error::ErrorCode::AccountDidNotDeserialize);
+
+        let instruction = anchor_lang::solana_program::system_instruction::transfer(
+            &signer_key,
+            vault.key,
+            amount
+        );
+
+        let result = anchor_lang::solana_program::program::invoke(
+            &instruction,
+            &[signer, vault],
+        );
+
+        require!(result.is_ok(), anchor_lang::error::ErrorCode::AccountDidNotDeserialize);
+        Ok(())
+    }
+
+    pub fn admin_withdraw(ctx: Context<AdminWithdraw>, amount: u64) -> Result<()> {
+        Ok(())
+    }
 }
 
 
@@ -69,7 +93,6 @@ pub struct Initialize<'info> {
     pub vault: Account<'info, Vault>,
     #[account(mut)]
     pub owner: Signer<'info>,
-    pub system_program: Program<'info, System>,
 }
 
 #[derive(Accounts)]
@@ -80,7 +103,6 @@ pub struct Deposit<'info> {
     pub vault: Account<'info, Vault>,
     #[account(mut)]
     pub owner: Signer<'info>,
-    pub system_program: Program<'info, System>,
 }
 
 #[derive(Accounts)]
@@ -91,7 +113,23 @@ pub struct Withdraw<'info> {
     pub vault: Account<'info, Vault>,
     #[account(mut)]
     pub owner: Signer<'info>,
-    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct Supply<'info> {
+    #[account(mut)]
+    pub vault: Account<'info, Vault>,
+    #[account(mut)]
+    pub signer: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct AdminWithdraw<'info> {
+    #[account(mut)]
+    pub vault: Account<'info, Vault>,
+    #[account(mut)]
+    pub account: Signer<'info>
+
 }
 
 #[account]
