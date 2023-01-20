@@ -1,11 +1,9 @@
-
 use anchor_lang::prelude::*;
 
 declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS");
 
 #[program]
 pub mod vault {
-    use std::borrow::{Borrow, BorrowMut};
     use super::*;
 
     pub fn initialize(ctx: Context<Initialize>, apy_basis_points: u64) -> Result<()> {
@@ -68,8 +66,8 @@ pub mod vault {
 
         let instruction = anchor_lang::solana_program::system_instruction::transfer(
             &signer_key,
-            vault.key,
-            amount
+            &vault.key(),
+            amount,
         );
 
         let result = anchor_lang::solana_program::program::invoke(
@@ -82,6 +80,19 @@ pub mod vault {
     }
 
     pub fn admin_withdraw(ctx: Context<AdminWithdraw>, amount: u64) -> Result<()> {
+        let vault = ctx.accounts.vault.to_account_info();
+        let account = ctx.accounts.account.to_account_info();
+        require!(account.key == vault.owner, anchor_lang::error::ErrorCode::AccountDidNotDeserialize);
+        let instruction = anchor_lang::solana_program::system_instruction::transfer(
+            vault.key,
+            account.key,
+            amount,
+        );
+        let error = anchor_lang::solana_program::program::invoke(
+            &instruction,
+            &[vault, account],
+        );
+        require!(error.is_ok(), anchor_lang::error::ErrorCode::AccountDidNotDeserialize);
         Ok(())
     }
 }
@@ -93,6 +104,7 @@ pub struct Initialize<'info> {
     pub vault: Account<'info, Vault>,
     #[account(mut)]
     pub owner: Signer<'info>,
+    pub system_program: Program<'info, System>,
 }
 
 #[derive(Accounts)]
@@ -103,6 +115,7 @@ pub struct Deposit<'info> {
     pub vault: Account<'info, Vault>,
     #[account(mut)]
     pub owner: Signer<'info>,
+    pub system_program: Program<'info, System>,
 }
 
 #[derive(Accounts)]
@@ -121,6 +134,8 @@ pub struct Supply<'info> {
     pub vault: Account<'info, Vault>,
     #[account(mut)]
     pub signer: Signer<'info>,
+    pub system_program: Program<'info, System>,
+
 }
 
 #[derive(Accounts)]
@@ -128,8 +143,7 @@ pub struct AdminWithdraw<'info> {
     #[account(mut)]
     pub vault: Account<'info, Vault>,
     #[account(mut)]
-    pub account: Signer<'info>
-
+    pub account: Signer<'info>,
 }
 
 #[account]
