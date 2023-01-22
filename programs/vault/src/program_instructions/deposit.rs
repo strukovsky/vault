@@ -13,12 +13,11 @@ pub fn __deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
         &instruction,
         &[from, to],
     );
-    if result.is_ok() {
-        let deposit_entry = &mut ctx.accounts.deposit_entry;
-        deposit_entry.timestamp_start = Clock::get().unwrap().unix_timestamp as i64;
-        deposit_entry.amount = amount;
-        deposit_entry.owner = *ctx.accounts.owner.key;
-    }
+    require!(result.is_ok(), DepositErrorCodes::TransferFailed);
+    let deposit_entry = &mut ctx.accounts.deposit_entry;
+    deposit_entry.timestamp_start = Clock::get().unwrap().unix_timestamp;
+    deposit_entry.amount = amount;
+    deposit_entry.owner = *ctx.accounts.owner.key;
     Ok(())
 }
 
@@ -38,4 +37,10 @@ pub struct DepositEntry {
     pub amount: u64,
     pub owner: Pubkey,
     pub timestamp_start: i64,
+}
+
+#[error_code]
+pub enum DepositErrorCodes {
+    NotAdminSupplement,
+    TransferFailed,
 }
